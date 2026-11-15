@@ -4,3 +4,8 @@ dist
 *.log
 .vite
 .env
+.env.*
+!.env.example
+.vercel
+coverage
+*.tsbuildinfo
