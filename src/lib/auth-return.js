@@ -5,6 +5,14 @@ export function authReturnUrl({ hash = "", search = "" }) {
     : null;
 }
 
+export function authFlowType(hash = "") {
+  const params = new URLSearchParams(hash.replace(/^#/, ""));
+  return params.has("access_token") &&
+    ["invite", "recovery"].includes(params.get("type"))
+    ? "implicit"
+    : "pkce";
+}
+
 if (typeof window !== "undefined") {
   const url = authReturnUrl(window.location);
   if (url) window.history.replaceState({}, "", url);

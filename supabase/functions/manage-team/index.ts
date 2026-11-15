@@ -27,11 +27,15 @@ Deno.serve(async (req: Request) => {
     return reply({ error: "Método não permitido." }, 405);
   const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
   if (!token) return reply({ error: "Autenticação necessária." }, 401);
-  const db = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    { auth: { persistSession: false, autoRefreshToken: false } },
-  );
+  const keys = JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") || "{}");
+  const serverKey =
+    Object.values(keys).find((key) => typeof key === "string") ||
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!serverKey)
+    return reply({ error: "Configuração de servidor indisponível." }, 503);
+  const db = createClient(Deno.env.get("SUPABASE_URL")!, serverKey as string, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
   const {
     data: { user },
     error: authError,

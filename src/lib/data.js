@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { authFlowType } from "./auth-return";
 import { decorateCampaigns } from "./domain";
 
 const url = import.meta.env.VITE_SUPABASE_URL;
@@ -9,7 +10,9 @@ export const configured = Boolean(url && key);
 export const supabase = configured
   ? createClient(url, key, {
       auth: {
-        flowType: "pkce",
+        flowType: authFlowType(
+          typeof window !== "undefined" ? window.location.hash : "",
+        ),
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: true,
