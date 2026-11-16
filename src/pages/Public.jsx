@@ -34,6 +34,16 @@ import {
   statuses,
 } from "../lib/domain";
 import { normalizeSearch } from "../lib/ux";
+import { institutional } from "../lib/institutional";
+import Institutional, {
+  History,
+  Programs,
+  Pillars,
+  Regions,
+  News,
+  FAQ,
+  ContactSummary,
+} from "./Institutional";
 
 export function CampaignCard({ campaign: c, Link }) {
   const state = effectiveStatus(c);
@@ -187,6 +197,8 @@ function Impact({ campaigns }) {
 export default function Public({ path, data, Link, notify }) {
   const { campaigns, settings } = data;
   const isHome = path === "/";
+  if (["/acoes", "/noticias", "/contato"].includes(path))
+    return <Institutional path={path} settings={settings} Link={Link} />;
   const campaignId = path.startsWith("/campanhas/")
     ? decodeURIComponent(path.split("/")[2])
     : null;
@@ -329,6 +341,11 @@ export default function Public({ path, data, Link, notify }) {
           Acompanhe os resultados públicos das campanhas, com respeito à
           privacidade de quem participa.
         </p>
+        <History compact />
+        <SectionHead
+          title="Campanhas registradas neste portal"
+          text="Indicadores calculados a partir das campanhas publicadas e das doações confirmadas pela equipe."
+        />
         <Impact campaigns={campaigns} />
         <section className="panel">
           <SectionHead
@@ -406,6 +423,20 @@ export default function Public({ path, data, Link, notify }) {
             </Link>
           </section>
         </div>
+        <section className="institution-section">
+          <p className="institution-intro">{institutional.intro}</p>
+          <a
+            href={institutional.social}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-link"
+          >
+            Conhecer a história no site do Grupo
+            <ArrowRight size={16} />
+          </a>
+        </section>
+        <History compact />
+        <Pillars />
         <figure className="community-photo">
           <img
             src="/images/organizacao-doacoes.jpg"
@@ -420,7 +451,9 @@ export default function Public({ path, data, Link, notify }) {
             Gustavo Fring.
           </figcaption>
         </figure>
+        <Regions />
         <HowItWorks Link={Link} />
+        <ContactSummary Link={Link} />
       </div>
     );
   if (path === "/como-doar")
@@ -499,6 +532,20 @@ export default function Public({ path, data, Link, notify }) {
             </p>
           </section>
         </div>
+        <section className="panel institution-section">
+          <h2>Também é possível contribuir nas lojas</h2>
+          <p className="institution-intro">
+            O Troco Solidário permite a participação nos caixas do Grupo
+            Bahamas. Consulte a equipe da loja e conheça as orientações antes de
+            contribuir.
+          </p>
+          <Link to="/acoes" className="text-link">
+            Conhecer o Troco Solidário
+            <ArrowRight size={16} />
+          </Link>
+        </section>
+        <FAQ />
+        <ContactSummary Link={Link} />
       </div>
     );
   if (path === "/privacidade")
@@ -585,8 +632,33 @@ export default function Public({ path, data, Link, notify }) {
         </figure>
       </section>
       <section className="public-container impact-home">
-        <Impact campaigns={campaigns} />
+        <History compact />
       </section>
+      <section className="public-container institution-section project-overview">
+        <div>
+          <h2>O Bahamas Solidário</h2>
+          <p>{institutional.intro}</p>
+          <Link to="/sobre" className="text-link">
+            Conhecer o projeto
+            <ArrowRight size={16} />
+          </Link>
+        </div>
+        <div>
+          <ShieldCheck size={28} />
+          <h3>Participação com transparência</h3>
+          <p>
+            Conheça as iniciativas, confira as metas de cada campanha e
+            acompanhe os resultados públicos.
+          </p>
+          <Link to="/transparencia" className="text-link">
+            Ver resultados
+            <ArrowRight size={16} />
+          </Link>
+        </div>
+      </section>
+      <div className="public-container">
+        <Programs Link={Link} compact />
+      </div>
       <section className="public-container home-campaigns">
         <SectionHead
           title="Campanhas para participar"
@@ -610,6 +682,9 @@ export default function Public({ path, data, Link, notify }) {
           </Empty>
         )}
       </section>
+      <div className="public-container">
+        <News Link={Link} compact />
+      </div>
       <section className="public-container">
         <HowItWorks Link={Link} />
       </section>
@@ -628,6 +703,9 @@ export default function Public({ path, data, Link, notify }) {
           </Link>
         </div>
       </section>
+      <div className="public-container">
+        <ContactSummary Link={Link} />
+      </div>
     </>
   );
 }

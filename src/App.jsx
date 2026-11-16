@@ -114,7 +114,18 @@ export default function App() {
   useEffect(() => {
     load();
     setMobile(false);
-    document.title = `${path.startsWith("/admin") ? "Administração" : path === "/campanhas" ? "Campanhas" : path === "/transparencia" ? "Transparência" : "Comunidade"} | Bahamas Solidário`;
+    const titles = {
+      "/": "Comunidade",
+      "/acoes": "Nossas ações",
+      "/campanhas": "Campanhas",
+      "/noticias": "Notícias",
+      "/transparencia": "Transparência",
+      "/sobre": "Sobre o projeto",
+      "/contato": "Fale conosco",
+      "/como-doar": "Como doar",
+      "/privacidade": "Privacidade",
+    };
+    document.title = `${path.startsWith("/admin") ? "Administração" : titles[path] || "Campanha"} | Bahamas Solidário`;
   }, [path]);
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
@@ -271,9 +282,12 @@ export default function App() {
             >
               {[
                 ["/", "Início"],
+                ["/acoes", "Ações"],
                 ["/campanhas", "Campanhas"],
+                ["/noticias", "Notícias"],
                 ["/transparencia", "Transparência"],
                 ["/sobre", "Sobre nós"],
+                ["/contato", "Contato"],
               ].map(([to, label]) => (
                 <Link
                   key={to}
@@ -335,6 +349,7 @@ export default function App() {
           </div>
           <div>
             <strong>Faça parte</strong>
+            <Link to="/acoes">Nossas ações</Link>
             <Link to="/campanhas">Campanhas</Link>
             <Link to="/como-doar">Como doar</Link>
             <Link to="/transparencia">Transparência</Link>
@@ -342,6 +357,8 @@ export default function App() {
           <div>
             <strong>Institucional</strong>
             <Link to="/sobre">Sobre o projeto</Link>
+            <Link to="/noticias">Notícias</Link>
+            <Link to="/contato">Fale conosco</Link>
             <Link to="/privacidade">Privacidade</Link>
             <Link to="/admin">
               Acesso administrativo
