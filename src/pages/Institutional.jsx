@@ -35,22 +35,6 @@ const icons = {
   education: GraduationCap,
   health: HeartPulse,
 };
-function SourceLink({
-  href = institutional.social,
-  children = "Consultar fonte oficial",
-}) {
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="text-link"
-    >
-      {children}
-      <ExternalLink size={14} />
-    </a>
-  );
-}
 export function History({ compact = false }) {
   return (
     <section
@@ -75,7 +59,6 @@ export function History({ compact = false }) {
           Estes números históricos não são somados às doações registradas neste
           portal.
         </p>
-        <SourceLink />
       </div>
       {!compact && <p className="institution-intro">{institutional.intro}</p>}
     </section>
@@ -110,14 +93,23 @@ export function Programs({ Link, compact = false }) {
               <h3>{p.title}</h3>
               <p>{p.text}</p>
               {!compact && <p className="muted">{p.detail}</p>}
-              {p.href.startsWith("/") ? (
-                <Link to={p.href} className="text-link">
-                  Falar com a equipe
-                  <ArrowRight size={16} />
-                </Link>
-              ) : (
-                <SourceLink href={p.href}>Saiba mais</SourceLink>
-              )}
+              <Link
+                to={
+                  compact
+                    ? "/acoes"
+                    : ["troco", "aniversario", "mesa-brasil"].includes(p.id)
+                      ? "/como-doar"
+                      : "/contato"
+                }
+                className="text-link"
+              >
+                {compact
+                  ? "Conhecer as ações"
+                  : ["troco", "aniversario", "mesa-brasil"].includes(p.id)
+                    ? "Como contribuir"
+                    : "Falar com a equipe"}
+                <ArrowRight size={16} />
+              </Link>
             </article>
           );
         })}
@@ -171,9 +163,6 @@ export function Regions() {
         <p>
           A disponibilidade de campanhas e pontos de coleta varia por local.
         </p>
-        <SourceLink href={institutional.group}>
-          Conhecer a atuação do Grupo
-        </SourceLink>
       </div>
     </section>
   );
@@ -200,15 +189,11 @@ export function News({ Link, compact = false }) {
               <span>{n.category}</span>
               <time dateTime={n.date}>{n.dateLabel || date(n.date)}</time>
             </div>
-            <h3>
-              <a href={n.href} target="_blank" rel="noopener noreferrer">
-                {n.title}
-              </a>
-            </h3>
+            <h3>{compact ? <Link to="/noticias">{n.title}</Link> : n.title}</h3>
             <p>{n.text}</p>
-            <SourceLink href={n.href}>
-              Ler em {n.publisher || "Grupo Bahamas"}
-            </SourceLink>
+            <p className="news-source">
+              Fonte: {n.publisher || "Grupo Bahamas"}
+            </p>
           </article>
         ))}
       </div>
@@ -271,9 +256,8 @@ export default function Institutional({ path, settings, Link }) {
           </ol>
           <p className="muted">
             Para saber mais sobre as instituições e a participação nas lojas,
-            consulte os canais oficiais.
+            fale com a nossa equipe.
           </p>
-          <SourceLink />
         </section>
         <FAQ />
         <ContactSummary Link={Link} />

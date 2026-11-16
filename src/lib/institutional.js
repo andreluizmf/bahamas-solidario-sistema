@@ -1,8 +1,4 @@
 export const institutional = {
-  reference: "https://bahamassolidario.netlify.app/",
-  social: "https://grupobahamas.com.br/esg-responsabilidade-social/",
-  sustainability: "https://grupobahamas.com.br/esg-sustentabilidade/",
-  group: "https://grupobahamas.com.br/quem-somos/",
   email: "contatosolidario@bahamas.com.br",
   address: "BR-040, km 780, Distrito Industrial, Juiz de Fora — MG",
   intro:
@@ -40,7 +36,6 @@ export const programs = [
     text: "A parceria contribui para a distribuição de alimentos a instituições sociais.",
     detail:
       "O Mesa Brasil participou da distribuição do Aniversário Solidário de 2025.",
-    href: "https://www.emporiobahamas.com.br/aniversario-solidario-do-grupo-bahamas-distribui-mais-de-345-toneladas-de-produtos/",
   },
   {
     id: "saude",
@@ -49,7 +44,6 @@ export const programs = [
     text: "Colaboradores participam de ações voluntárias em parceria com o Hemominas.",
     detail:
       "A iniciativa integra as ações de saúde e bem-estar divulgadas pelo Grupo.",
-    href: institutional.social,
   },
   {
     id: "troco",
@@ -57,7 +51,6 @@ export const programs = [
     icon: "coins",
     text: "Nos caixas, centavos do troco podem se transformar em apoio a instituições locais.",
     detail: "Ao finalizar a compra, pergunte à equipe como participar.",
-    href: institutional.social,
   },
   {
     id: "aniversario",
@@ -65,7 +58,6 @@ export const programs = [
     icon: "package",
     text: "Em março, a mobilização reúne alimentos e produtos de higiene e limpeza.",
     detail: "Em 2026, o Grupo dobrou o peso arrecadado pelos clientes.",
-    href: institutional.social,
   },
   {
     id: "instituicoes",
@@ -74,7 +66,6 @@ export const programs = [
     text: "Ações de arrecadação aproximam clientes e entidades beneficentes.",
     detail:
       "Para apresentar uma instituição ou propor uma parceria, fale com a equipe.",
-    href: "/contato",
   },
   {
     id: "esporte",
@@ -82,7 +73,6 @@ export const programs = [
     icon: "sport",
     text: "Incentivo ao esporte, ao paradesporto e à convivência comunitária.",
     detail: "Conheça os projetos e as iniciativas apoiadas pelo Grupo.",
-    href: institutional.social,
   },
   {
     id: "ambiente",
@@ -90,7 +80,6 @@ export const programs = [
     icon: "leaf",
     text: "Coleta de recicláveis, reaproveitamento de recursos e energia renovável fazem parte das iniciativas do Grupo.",
     detail: "Consulte os materiais e locais de coleta nos canais oficiais.",
-    href: institutional.sustainability,
   },
   {
     id: "desenvolvimento",
@@ -98,7 +87,6 @@ export const programs = [
     icon: "education",
     text: "Aprendizagem profissional e inclusão apoiam o desenvolvimento de pessoas.",
     detail: "Conheça os programas de formação e diversidade do Grupo Bahamas.",
-    href: institutional.social,
   },
 ];
 
@@ -164,7 +152,6 @@ export const news = [
     publisher: "Sesc em Minas",
     title: "Bahamas está entre os doadores homenageados pelo Sesc Mesa Brasil",
     text: "O Sesc em Minas reconheceu os maiores doadores associados à AMIS na Superminas 2026. O Bahamas aparece entre as cinco empresas homenageadas pela contribuição ao programa.",
-    href: "https://sescmg.com.br/noticias/programa-sesc-mesa-brasil-homenageia-maiores-doadores-do-setor-supermercadista/",
   },
   {
     id: "aniversario-2026",
@@ -172,7 +159,6 @@ export const news = [
     category: "Aniversário Solidário",
     title: "Aniversário Solidário alcança 439,2 toneladas em 2026",
     text: "A contribuição dos clientes chegou a 219,6 toneladas. Com a mesma quantidade doada pelo Grupo, a iniciativa destinou 439,2 toneladas a 116 instituições participantes.",
-    href: "https://grupobahamas.com.br/2026/05/05/grupo-bahamas-supera-marca-historica-e-alcanca-4392-toneladas-no-aniversario-solidario-2026/",
   },
   {
     id: "esportes-2026",
@@ -181,7 +167,6 @@ export const news = [
     title:
       "Circuito Bahamas apresenta a primeira meia maratona em Juiz de Fora",
     text: "A publicação apresentou a prova de 31 de maio de 2026, com percursos de 5, 10 e 21 km. Consulte a matéria para conhecer essa iniciativa do Circuito Bahamas de Esportes.",
-    href: "https://grupobahamas.com.br/2026/04/09/circuito-bahamas-de-esportes-promove-a-1-meia-maratona-de-juiz-de-fora/",
   },
   {
     id: "aniversario-2025",
@@ -191,7 +176,6 @@ export const news = [
     publisher: "Empório Bahamas",
     title: "Edição de 2025 reuniu 345.762 kg de doações",
     text: "Clientes contribuíram com 172.881 kg. A contrapartida do Grupo levou o total a 345.762 kg, com distribuição em parceria com o Sesc Mesa Brasil.",
-    href: "https://www.emporiobahamas.com.br/aniversario-solidario-do-grupo-bahamas-distribui-mais-de-345-toneladas-de-produtos/",
   },
 ];
 

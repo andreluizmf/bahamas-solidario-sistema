@@ -425,15 +425,6 @@ export default function Public({ path, data, Link, notify }) {
         </div>
         <section className="institution-section">
           <p className="institution-intro">{institutional.intro}</p>
-          <a
-            href={institutional.social}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-link"
-          >
-            Conhecer a história no site do Grupo
-            <ArrowRight size={16} />
-          </a>
         </section>
         <History compact />
         <Pillars />

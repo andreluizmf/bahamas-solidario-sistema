@@ -7,7 +7,7 @@ A ampliação mantém o visual aprovado e recupera as áreas informativas do [si
 - Início: histórico institucional, apresentação, ações e publicações, além das campanhas já existentes.
 - Ações: Troco Solidário, Aniversário Solidário, apoio a instituições, Mesa Brasil, esporte, meio ambiente, formação e doação de sangue.
 - Sobre: trajetória, quatro frentes de atuação e presença regional, com exemplos de cidades.
-- Notícias: quatro publicações de 2025 e 2026, com data ou período, autoria institucional e ligação à fonte.
+- Notícias: quatro publicações de 2025 e 2026, com data ou período e autoria institucional em texto.
 - Contato: e-mail, escritório central, redes sociais e dúvidas frequentes.
 - Transparência: resultados históricos identificados separadamente dos indicadores calculados pelo sistema.
 - Favicon: símbolo vetorial com a inicial B, azul institucional e detalhe vermelho; servido localmente.
@@ -38,3 +38,9 @@ Os conteúdos informativos ficam em `src/lib/institutional.js`, e a apresentaç�
 ## Verificação
 
 Build de produção e formatação verificados; 19 testes de regras, cálculos, autenticação e UX passaram. Navegação, perguntas expansíveis, ligações de contato, datas e apresentação foram conferidas no navegador, incluindo telas de 390 px e 980 px.
+
+## Ajuste de navegação e alinhamento
+
+Por solicitação do responsável, foram retirados os links públicos para os sites institucionais do Bahamas e os botões de consulta externa de fontes. As referências de pesquisa permanecem apenas nesta documentação; a interface identifica as fontes das notícias em texto. As ações agora direcionam para páginas internas do portal.
+
+O espaçamento vertical de `.institution-section` usa `margin-block`, preservando as margens horizontais de `.public-container`. A apresentação do projeto permanece alinhada ao histórico e às campanhas em telas de 1920 px e 390 px, sem transbordamento horizontal.
