@@ -20,9 +20,12 @@ Abra `/admin/previa` para conhecer o painel somente leitura.
 ## O que o sistema oferece
 
 - Portal público: início, campanhas, detalhes e metas, transparência, sobre,
-  orientações para doação e privacidade.
+  ações institucionais, notícias, contato, orientações para doação e privacidade.
 - Administração: login, recuperação de senha, painel, campanhas com rascunho e
   publicação, necessidades, doações, filtros, relatórios CSV, conteúdo, equipe e auditoria.
+- Planejamento administrativo por campanha: objetivo SMART, 5W2H, SWOT, tarefas, responsáveis, prazos e controle de orçamento.
+- Marketing social: público-alvo, proposta de valor, 4 Ps adaptados, calendário de divulgação, modelos de mensagem, UTM e indicadores manuais.
+- Exportação de plano em TXT e divulgação em CSV; [guia para apresentação das disciplinas](docs/ADMINISTRACAO-MARKETING.md).
 - Banco com regras RLS: informações de doadores não ficam disponíveis ao público;
   contas sem autorização não administram o sistema.
 - Gravação atômica de campanhas e itens; controle de versão para evitar sobrescritas;
@@ -37,6 +40,8 @@ src/
   App.jsx               Navegação, sessão e acesso
   pages/Public.jsx      Portal da comunidade
   pages/Admin.jsx       Gestão, relatórios e formulários
+  pages/Management.jsx  Planejamento administrativo e marketing
+  lib/management.js     Indicadores, orçamento e mensagens
   components/ui.jsx     Componentes compartilhados
   lib/data.js           Integração oficial com Supabase
   lib/domain.js         Cálculos, datas e exportação

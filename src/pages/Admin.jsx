@@ -23,6 +23,8 @@ import {
   Trash2,
   Users,
   X,
+  BriefcaseBusiness,
+  Target,
 } from "lucide-react";
 import {
   Badge,
@@ -66,12 +68,16 @@ import {
 import { confirmNavigation, normalizeSearch } from "../lib/ux";
 import { useUnsavedChanges } from "../lib/use-unsaved";
 
+const Management = React.lazy(() => import("./Management"));
+
 const tabs = [
   ["", "Visão geral", LayoutDashboard],
   ["campanhas", "Campanhas", Megaphone],
   ["doacoes", "Doações", Heart],
   ["necessidades", "Necessidades", Package],
   ["relatorios", "Relatórios", Download],
+  ["gestao", "Administração", BriefcaseBusiness],
+  ["marketing", "Marketing", Target],
   ["conteudo", "Conteúdo do portal", Settings],
   ["equipe", "Equipe e acesso", Users],
   ["historico", "Histórico", History],
@@ -278,9 +284,13 @@ export default function Admin({
         <nav aria-label="Administração" id="admin-navigation">
           {tabs.map(([slug, label, I], index) => (
             <React.Fragment key={slug}>
-              {(index === 0 || index === 5) && (
+              {(index === 0 || index === 5 || index === 7) && (
                 <span className="nav-group-label">
-                  {index === 0 ? "Operação" : "Configuração"}
+                  {index === 0
+                    ? "Operação"
+                    : index === 5
+                      ? "Planejamento"
+                      : "Configuração"}
                 </span>
               )}
               <Link
@@ -372,7 +382,11 @@ export default function Admin({
               <p className="muted">
                 {page === ""
                   ? "Uma visão clara do cuidado que se transforma em ação."
-                  : "Organize cada etapa com cuidado, clareza e transparência."}
+                  : page === "gestao"
+                    ? "Planeje objetivos, responsabilidades e recursos de cada campanha."
+                    : page === "marketing"
+                      ? "Organize a comunicação e acompanhe os resultados informados pela equipe."
+                      : "Organize cada etapa com cuidado, clareza e transparência."}
               </p>
             </div>
             {(page === "campanhas" || page === "doacoes") && (
@@ -828,6 +842,16 @@ export default function Admin({
                   exportDonations={exportDonations}
                 />
               )}
+              {["gestao", "marketing"].includes(page) && (
+                <React.Suspense fallback={<Loading />}>
+                  <Management
+                    mode={page}
+                    campaigns={campaigns}
+                    notify={notify}
+                    Link={Link}
+                  />
+                </React.Suspense>
+              )}
               {page === "conteudo" && (
                 <ContentForm
                   settings={data.settings}
@@ -930,6 +954,10 @@ export default function Admin({
                                       donations: "Doações",
                                       site_settings: "Conteúdo",
                                       administrators: "Equipe",
+                                      campaign_plans: "Planejamento",
+                                      management_tasks: "Tarefas",
+                                      campaign_expenses: "Gastos operacionais",
+                                      marketing_actions: "Divulgação",
                                     }[a.entity] || a.entity}
                                   </td>
                                   <td>

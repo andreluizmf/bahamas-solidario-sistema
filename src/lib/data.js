@@ -90,7 +90,7 @@ function unwrap(result) {
   if (result.error) throw result.error;
   return result.data;
 }
-async function all(query) {
+export async function all(query) {
   const result = [];
   for (let from = 0; from < 50000; from += 1000) {
     const page = unwrap(await query().range(from, from + 999));

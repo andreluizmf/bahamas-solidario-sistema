@@ -2,10 +2,12 @@
 
 ## 1. Banco e autenticação
 
-Use um projeto Supabase dedicado ao sistema. No SQL Editor, execute uma única vez
-`supabase/migrations/202611150001_platform.sql` ou aplique com `supabase db push`.
-A migração é transacional e cria as tabelas, políticas RLS, auditoria e operações
-atômicas. Não adiciona campanhas ou doadores fictícios ao banco real.
+Use um projeto Supabase dedicado ao sistema. Em um projeto novo, execute no SQL Editor os arquivos de `supabase/migrations` em ordem de nome, uma única vez:
+
+1. `202611150001_platform.sql`: campanhas, doações, acesso, conteúdo e auditoria.
+2. `20261116004916_administration_marketing.sql`: planos, tarefas, gastos e divulgação privados.
+
+Se a plataforma anterior já existe no banco, aplique somente a segunda migração. Ambas são transacionais e não cadastram campanhas ou doadores fictícios. Na produção atual, os arquivos foram aplicados pelo SQL Editor. Antes de adotar aplicação automática por CLI, concilie o histórico de migrações para não reaplicar a estrutura existente.
 
 Em Authentication:
 
