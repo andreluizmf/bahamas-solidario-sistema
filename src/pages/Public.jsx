@@ -11,7 +11,6 @@ import {
   MapPin,
   Package,
   ShieldCheck,
-  Sparkles,
   Users,
   Mail,
   Phone,
@@ -34,6 +33,7 @@ import {
   progress,
   statuses,
 } from "../lib/domain";
+import { normalizeSearch } from "../lib/ux";
 
 export function CampaignCard({ campaign: c, Link }) {
   const state = effectiveStatus(c);
@@ -45,15 +45,12 @@ export function CampaignCard({ campaign: c, Link }) {
           <Package size={15} />
           {c.category}
         </span>
-        <div className="cover-art" aria-hidden="true">
-          <HandHeart size={68} strokeWidth={1} />
-        </div>
+
         <Badge tone={state === "active" ? "blue" : ""}>
           {state === "closed" ? "Prazo encerrado" : statuses[state]}
         </Badge>
       </div>
       <div className="campaign-card-body">
-        <p className="eyebrow">BAHAMAS SOLIDÁRIO</p>
         <h3>
           <Link to={`/campanhas/${c.id}`}>{c.name}</Link>
         </h3>
@@ -71,7 +68,11 @@ export function CampaignCard({ campaign: c, Link }) {
             <CalendarDays size={14} />
             Até {date(c.ends_on)}
           </span>
-          <Link to={`/campanhas/${c.id}`} aria-label={`Ver campanha ${c.name}`}>
+          <Link
+            to={`/campanhas/${c.id}`}
+            className="icon-button"
+            aria-label={`Ver campanha ${c.name}`}
+          >
             <ArrowRight size={20} />
           </Link>
         </div>
@@ -85,9 +86,9 @@ function CampaignFilters({ campaigns, Link }) {
   const [status, setStatus] = useState("");
   const filtered = campaigns.filter(
     (c) =>
-      `${c.name} ${c.description} ${c.beneficiary}`
-        .toLocaleLowerCase("pt-BR")
-        .includes(query.toLocaleLowerCase("pt-BR")) &&
+      normalizeSearch(`${c.name} ${c.description} ${c.beneficiary}`).includes(
+        normalizeSearch(query),
+      ) &&
       (!category || c.category === category) &&
       (!status || effectiveStatus(c) === status),
   );
@@ -123,10 +124,24 @@ function CampaignFilters({ campaigns, Link }) {
           </select>
         </Field>
       </div>
-      <p className="result-count">
-        {number(filtered.length)} campanha{filtered.length !== 1 ? "s" : ""}{" "}
-        encontrada{filtered.length !== 1 ? "s" : ""}
-      </p>
+      <div className="filter-summary">
+        <p className="result-count" role="status">
+          {number(filtered.length)} campanha{filtered.length !== 1 ? "s" : ""}{" "}
+          encontrada{filtered.length !== 1 ? "s" : ""}
+        </p>
+        {(query || category || status) && (
+          <button
+            className="button secondary"
+            onClick={() => {
+              setQuery("");
+              setCategory("");
+              setStatus("");
+            }}
+          >
+            Limpar filtros
+          </button>
+        )}
+      </div>
       {filtered.length ? (
         <div className="campaign-grid">
           {filtered.map((c) => (
@@ -299,12 +314,7 @@ export default function Public({ path, data, Link, notify }) {
   if (path === "/campanhas")
     return (
       <div className="public-container page-space">
-        <p className="eyebrow">ENCONTRE SUA CAUSA</p>
-        <h1>
-          Pequenos gestos.
-          <br />
-          Grandes possibilidades.
-        </h1>
+        <h1>Campanhas solidárias</h1>
         <p className="lead">
           Conheça nossas iniciativas e veja onde sua ajuda faz a diferença.
         </p>
@@ -314,7 +324,6 @@ export default function Public({ path, data, Link, notify }) {
   if (path === "/transparencia")
     return (
       <div className="public-container page-space">
-        <p className="eyebrow">IMPACTO COMPARTILHADO</p>
         <h1>Solidariedade com transparência.</h1>
         <p className="lead">
           Acompanhe os resultados públicos das campanhas, com respeito à
@@ -377,7 +386,6 @@ export default function Public({ path, data, Link, notify }) {
   if (path === "/sobre")
     return (
       <div className="public-container page-space">
-        <p className="eyebrow">NOSSO PROPÓSITO</p>
         <h1>Gente que cuida de gente.</h1>
         <div className="about-grid">
           <section className="panel">
@@ -386,7 +394,6 @@ export default function Public({ path, data, Link, notify }) {
             <p className="lead preserve">{settings.about}</p>
           </section>
           <section className="panel navy-panel">
-            <p className="eyebrow">O QUE NOS MOVE</p>
             <h2>Uma comunidade mais próxima, um gesto de cada vez.</h2>
             <p>
               Organização para ajudar melhor. Transparência para acompanhar cada
@@ -399,13 +406,26 @@ export default function Public({ path, data, Link, notify }) {
             </Link>
           </section>
         </div>
+        <figure className="community-photo">
+          <img
+            src="/images/organizacao-doacoes.jpg"
+            width="1200"
+            height="800"
+            loading="lazy"
+            decoding="async"
+            alt="Duas voluntárias separando cobertores e outros itens em caixas de doação"
+          />
+          <figcaption>
+            Separar os itens com cuidado faz parte da doação. Foto ilustrativa:
+            Gustavo Fring.
+          </figcaption>
+        </figure>
         <HowItWorks Link={Link} />
       </div>
     );
   if (path === "/como-doar")
     return (
       <div className="public-container page-space">
-        <p className="eyebrow">FAÇA PARTE</p>
         <h1>A sua ajuda tem um caminho.</h1>
         <p className="lead">Tudo começa com a escolha de uma causa.</p>
         <HowItWorks Link={Link} />
@@ -484,7 +504,6 @@ export default function Public({ path, data, Link, notify }) {
   if (path === "/privacidade")
     return (
       <div className="public-container page-space narrow">
-        <p className="eyebrow">RESPEITO ÀS PESSOAS</p>
         <h1>Privacidade e uso dos dados.</h1>
         <section className="panel">
           <p className="preserve">{settings.privacy_notice}</p>
@@ -535,15 +554,11 @@ export default function Public({ path, data, Link, notify }) {
     <>
       <section className="hero public-container">
         <div className="hero-copy">
-          <span className="hero-kicker">
-            <span />
-            CUIDAR TAMBÉM É FAZER PARTE
-          </span>
           <h1>{settings.hero_title}</h1>
           <p>{settings.hero_description}</p>
           <div className="hero-actions">
             <Link to="/campanhas" className="button primary">
-              Quero fazer parte
+              Ver campanhas
               <ArrowRight size={17} />
             </Link>
             <Link to="/transparencia" className="button ghost">
@@ -553,52 +568,28 @@ export default function Public({ path, data, Link, notify }) {
           </div>
           <p className="hero-assurance">
             <ShieldCheck size={16} />
-            Campanhas reais. Cuidado de perto. Resultados compartilhados.
+            Consulte os itens necessários, os prazos e os resultados.
           </p>
         </div>
-        <div className="hero-bento">
-          <div className="hero-art">
-            <div className="art-ring ring-one" />
-            <div className="art-ring ring-two" />
-            <HandHeart size={110} strokeWidth={1} aria-hidden="true" />
-            <div className="floating-note">
-              <span className="heart-dot">
-                <Heart size={18} />
-              </span>
-              <div>
-                <strong>Um gesto. Muitas histórias.</strong>
-                <small>A solidariedade aproxima.</small>
-              </div>
-            </div>
-            <span className="art-star">
-              <Sparkles size={28} />
-            </span>
-          </div>
-          <Link to="/como-doar" className="hero-mini">
-            <span>
-              Uma ajuda que
-              <br />
-              <strong>chega mais longe.</strong>
-            </span>
-            <ArrowRight size={26} />
-          </Link>
-          <div className="hero-mini light">
-            <ShieldCheck size={24} />
-            <span>
-              Transparência
-              <br />
-              <strong>em cada etapa.</strong>
-            </span>
-          </div>
-        </div>
+        <figure className="hero-photo">
+          <img
+            src="/images/voluntarios-alimentos.jpg"
+            width="1600"
+            height="1067"
+            fetchpriority="high"
+            alt="Voluntários organizando alimentos em caixas para doação"
+          />
+          <figcaption>
+            Organizar, arrecadar e cuidar. Foto ilustrativa: cottonbro studio.
+          </figcaption>
+        </figure>
       </section>
       <section className="public-container impact-home">
         <Impact campaigns={campaigns} />
       </section>
       <section className="public-container home-campaigns">
         <SectionHead
-          eyebrow="CAUSAS QUE CONECTAM"
-          title="Toda campanha começa com cuidado."
+          title="Campanhas para participar"
           text="Escolha como você quer contribuir para a nossa comunidade."
           action={
             <Link to="/campanhas" className="text-link">
@@ -625,13 +616,11 @@ export default function Public({ path, data, Link, notify }) {
       <section className="public-container">
         <div className="public-cta">
           <div>
-            <p className="eyebrow">JUNTOS, FAZEMOS MAIS</p>
-            <h2>
-              O próximo capítulo
-              <br />
-              pode começar com você.
-            </h2>
-            <p>Descubra como transformar vontade de ajudar em ação.</p>
+            <h2>Quer ajudar? Veja como doar.</h2>
+            <p>
+              Confira os pontos de coleta e as orientações para entregar sua
+              doação.
+            </p>
           </div>
           <Link to="/como-doar" className="button white">
             Saiba como doar
@@ -645,10 +634,7 @@ export default function Public({ path, data, Link, notify }) {
 function HowItWorks({ Link }) {
   return (
     <section className="how-section">
-      <SectionHead
-        eyebrow="SIMPLES DE PARTICIPAR"
-        title="Da sua intenção ao próximo gesto."
-      />
+      <SectionHead title="Como participar" />
       <div className="steps-grid">
         {[
           [
@@ -663,7 +649,7 @@ function HowItWorks({ Link }) {
           ],
           [
             "03",
-            "Faça parte da transformação",
+            "Combine a entrega",
             "Combine a entrega e acompanhe os resultados no portal.",
           ],
         ].map(([n, title, text]) => (

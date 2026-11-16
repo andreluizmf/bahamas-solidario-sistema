@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
 import {
   ArrowRight,
   ChevronLeft,
@@ -8,6 +8,8 @@ import {
   X,
 } from "lucide-react";
 import { number } from "../lib/domain";
+import { fieldError } from "../lib/ux";
+import { useUnsavedChanges } from "../lib/use-unsaved";
 
 export function Button({ children, variant = "primary", loading, ...props }) {
   return (
@@ -15,6 +17,7 @@ export function Button({ children, variant = "primary", loading, ...props }) {
       {...props}
       className={`button ${variant} ${props.className || ""}`}
       disabled={props.disabled || loading}
+      aria-busy={loading || undefined}
     >
       {loading && <LoaderCircle size={16} className="spin" />}
       {children}
@@ -90,22 +93,109 @@ export function Metric({ label, value, hint, icon: Component, featured }) {
   );
 }
 export function Field({ label, hint, children, className = "" }) {
+  const id = useId();
+  const [error, setError] = useState("");
+  const isControl =
+    React.isValidElement(children) &&
+    ["input", "select", "textarea"].includes(children.type);
+  const child = isControl
+    ? React.cloneElement(children, {
+        id: children.props.id || id,
+        "aria-invalid": error ? true : undefined,
+        "aria-describedby":
+          [
+            children.props["aria-describedby"],
+            hint ? `${id}-hint` : "",
+            error ? `${id}-error` : "",
+          ]
+            .filter(Boolean)
+            .join(" ") || undefined,
+        onInvalid: (event) => {
+          event.preventDefault();
+          setError(fieldError(event.currentTarget, label));
+          children.props.onInvalid?.(event);
+        },
+        onChange: (event) => {
+          if (error) setError(fieldError(event.currentTarget, label));
+          children.props.onChange?.(event);
+        },
+      })
+    : children;
   return (
-    <label className={`field ${className}`}>
-      <span>{label}</span>
-      {children}
-      {hint && <small>{hint}</small>}
+    <label
+      className={`field ${className}`}
+      htmlFor={isControl ? children.props.id || id : undefined}
+    >
+      <span>
+        {label}
+        {isControl && children.props.required && (
+          <span className="required-mark" aria-hidden="true">
+            {" "}
+            *
+          </span>
+        )}
+      </span>
+      {child}
+      {hint && <small id={`${id}-hint`}>{hint}</small>}
+      {error && (
+        <small className="field-error" id={`${id}-error`}>
+          {error}
+        </small>
+      )}
     </label>
+  );
+}
+export function Form({ children, ...props }) {
+  const ref = useRef(null);
+  const queued = useRef(false);
+  const [invalid, setInvalid] = useState(false);
+  return (
+    <form
+      {...props}
+      ref={ref}
+      onInvalidCapture={(event) => {
+        event.preventDefault();
+        setInvalid(true);
+        if (!queued.current) {
+          queued.current = true;
+          requestAnimationFrame(() => {
+            queued.current = false;
+            ref.current
+              ?.querySelector("input:invalid,select:invalid,textarea:invalid")
+              ?.focus();
+          });
+        }
+      }}
+      onInput={(event) => {
+        if (!ref.current?.querySelector(":invalid")) setInvalid(false);
+        props.onInput?.(event);
+      }}
+    >
+      {invalid && (
+        <p className="form-error" role="alert">
+          Confira os campos destacados antes de continuar.
+        </p>
+      )}
+      {children}
+    </form>
+  );
+}
+export function FormSection({ title, description, children }) {
+  return (
+    <fieldset className="form-section">
+      <legend>{title}</legend>
+      {description && <p className="form-help">{description}</p>}
+      {children}
+    </fieldset>
   );
 }
 export function Badge({ children, tone = "" }) {
   return <span className={`badge ${tone}`}>{children}</span>;
 }
-export function SectionHead({ eyebrow, title, text, action }) {
+export function SectionHead({ title, text, action }) {
   return (
     <div className="section-head">
       <div>
-        {eyebrow && <p className="eyebrow">{eyebrow}</p>}
         <h2>{title}</h2>
         {text && <p className="muted">{text}</p>}
       </div>
@@ -113,23 +203,42 @@ export function SectionHead({ eyebrow, title, text, action }) {
     </div>
   );
 }
-export function Modal({ title, children, onClose, wide = false }) {
+export function Modal({
+  title,
+  children,
+  onClose,
+  wide = false,
+  dirty,
+  busy = false,
+}) {
   const ref = useRef(null);
+  const [discard, setDiscard] = useState(false);
+  const [savedDirty, setSavedDirty] = useState(false);
+  const hasChanges = dirty ?? savedDirty;
+  useUnsavedChanges(hasChanges);
   const closeRef = useRef(onClose);
-  closeRef.current = onClose;
+  const requestClose = () => {
+    if (busy) return;
+    if (hasChanges) setDiscard(true);
+    else onClose();
+  };
+  closeRef.current = requestClose;
   useEffect(() => {
     const previous = document.activeElement;
     const overflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     ref.current?.focus();
     const key = (event) => {
-      if (event.key === "Escape") closeRef.current();
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeRef.current();
+      }
       if (event.key !== "Tab") return;
       const items = [
         ...ref.current.querySelectorAll(
           "button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href]",
         ),
-      ].filter((e) => e.getClientRects().length);
+      ].filter((e) => e.getClientRects().length && !e.closest("[inert]"));
       if (!items.length) {
         event.preventDefault();
         return;
@@ -163,7 +272,7 @@ export function Modal({ title, children, onClose, wide = false }) {
     <div
       className="modal-backdrop"
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) requestClose();
       }}
     >
       <section
@@ -173,18 +282,50 @@ export function Modal({ title, children, onClose, wide = false }) {
         aria-modal="true"
         aria-labelledby="modal-title"
         tabIndex={-1}
+        onInputCapture={() => setSavedDirty(true)}
+        onClickCapture={(event) => {
+          if (event.target.closest("[data-close-modal]")) {
+            event.preventDefault();
+            event.stopPropagation();
+            requestClose();
+          }
+        }}
       >
         <div className="modal-head">
           <h2 id="modal-title">{title}</h2>
           <button
             className="icon-button"
             aria-label="Fechar janela"
-            onClick={onClose}
+            onClick={requestClose}
+            disabled={busy}
           >
             <X size={20} />
           </button>
         </div>
-        {children}
+        {discard && (
+          <div className="discard-warning" role="alert">
+            <h3>Descartar as alterações?</h3>
+            <p>O que você editou ainda não foi salvo.</p>
+            <div className="inline">
+              <Button
+                autoFocus
+                variant="secondary"
+                onClick={() => {
+                  setDiscard(false);
+                  requestAnimationFrame(() => ref.current?.focus());
+                }}
+              >
+                Continuar editando
+              </Button>
+              <Button variant="danger" onClick={onClose}>
+                Descartar alterações
+              </Button>
+            </div>
+          </div>
+        )}
+        <div inert={discard ? "" : undefined} hidden={discard}>
+          {children}
+        </div>
       </section>
     </div>
   );

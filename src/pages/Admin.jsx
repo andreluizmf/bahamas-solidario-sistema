@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Archive,
   ArrowRight,
@@ -30,6 +30,8 @@ import {
   Empty,
   ErrorBox,
   Field,
+  Form,
+  FormSection,
   Loading,
   Metric,
   Modal,
@@ -61,6 +63,8 @@ import {
   saveSettings,
   supabase,
 } from "../lib/data";
+import { confirmNavigation, normalizeSearch } from "../lib/ux";
+import { useUnsavedChanges } from "../lib/use-unsaved";
 
 const tabs = [
   ["", "Visão geral", LayoutDashboard],
@@ -80,15 +84,19 @@ export default function Admin({
   notify,
   onSignOut,
 }) {
-  const Link = ({ to, ...props }) => (
-    <BaseLink
-      {...props}
-      to={
-        !configured && to.startsWith("/admin")
-          ? to.replace("/admin", "/admin/previa")
-          : to
-      }
-    />
+  const Link = useMemo(
+    () =>
+      ({ to, ...props }) => (
+        <BaseLink
+          {...props}
+          to={
+            !configured && to.startsWith("/admin")
+              ? to.replace("/admin", "/admin/previa")
+              : to
+          }
+        />
+      ),
+    [BaseLink],
   );
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
@@ -98,10 +106,13 @@ export default function Admin({
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("");
   const [campaignFilter, setCampaignFilter] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+  const [updatedAt, setUpdatedAt] = useState(null);
   const page = path.split("/")[2] || "";
   const active = tabs.find((t) => t[0] === page);
   const load = async () => {
     setError("");
+    setRefreshing(true);
     try {
       setData(
         configured
@@ -114,8 +125,11 @@ export default function Admin({
               settings: defaultSettings,
             },
       );
+      setUpdatedAt(new Date());
     } catch (e) {
       setError(message(e));
+    } finally {
+      setRefreshing(false);
     }
   };
   useEffect(() => {
@@ -127,6 +141,17 @@ export default function Admin({
     setCampaignFilter("");
     setMobile(false);
   }, [page]);
+  useEffect(() => {
+    if (!mobile) return;
+    const escape = (event) => {
+      if (event.key === "Escape") {
+        setMobile(false);
+        document.querySelector('[aria-controls="admin-navigation"]')?.focus();
+      }
+    };
+    window.addEventListener("keydown", escape);
+    return () => window.removeEventListener("keydown", escape);
+  }, [mobile]);
   const mutate = async (action, success) => {
     if (!configured) {
       notify(
@@ -158,19 +183,39 @@ export default function Admin({
   const donations = data?.donations || [];
   const filteredCampaigns = campaigns.filter(
     (c) =>
-      c.name.toLowerCase().includes(query.toLowerCase()) &&
+      normalizeSearch(c.name).includes(normalizeSearch(query)) &&
       (!filter || (filter === "draft" ? !c.published : c.status === filter)),
   );
   const filteredDonations = donations.filter((d) => {
     const n = findNeed(d.need_id);
     return (
-      `${d.donor_name} ${n?.item} ${n?.campaign.name}`
-        .toLowerCase()
-        .includes(query.toLowerCase()) &&
+      normalizeSearch(
+        `${d.donor_name} ${n?.item} ${n?.campaign.name}`,
+      ).includes(normalizeSearch(query)) &&
       (!filter || d.status === filter) &&
       (!campaignFilter || n?.campaign.id === campaignFilter)
     );
   });
+  const filteredNeeds = campaigns
+    .filter((c) => c.status !== "archived")
+    .flatMap((c) =>
+      c.needs
+        .filter((n) => n.active !== false)
+        .map((n) => ({ ...n, campaign: c })),
+    )
+    .filter(
+      (n) =>
+        normalizeSearch(n.item + " " + n.campaign.name).includes(
+          normalizeSearch(query),
+        ) &&
+        (!filter ||
+          (filter === "missing" ? n.received < n.goal : n.received >= n.goal)),
+    );
+  const clearFilters = () => {
+    setQuery("");
+    setFilter("");
+    setCampaignFilter("");
+  };
   const exportDonations = (records = filteredDonations) => {
     download(
       `doacoes-${today()}.csv`,
@@ -223,17 +268,31 @@ export default function Admin({
           <ShieldCheck size={13} />
           ÁREA ADMINISTRATIVA
         </div>
-        <nav aria-label="Administração">
-          {tabs.map(([slug, label, I]) => (
-            <Link
-              key={slug}
-              to={`/admin${slug ? "/" + slug : ""}`}
-              className={page === slug ? "active" : ""}
-              aria-current={page === slug ? "page" : undefined}
-            >
-              <I size={18} />
-              {label}
-            </Link>
+        <button
+          className="icon-button sidebar-close mobile-menu"
+          aria-label="Fechar menu administrativo"
+          onClick={() => setMobile(false)}
+        >
+          <X size={20} />
+        </button>
+        <nav aria-label="Administração" id="admin-navigation">
+          {tabs.map(([slug, label, I], index) => (
+            <React.Fragment key={slug}>
+              {(index === 0 || index === 5) && (
+                <span className="nav-group-label">
+                  {index === 0 ? "Operação" : "Configuração"}
+                </span>
+              )}
+              <Link
+                key={slug}
+                to={`/admin${slug ? "/" + slug : ""}`}
+                className={page === slug ? "active" : ""}
+                aria-current={page === slug ? "page" : undefined}
+              >
+                <I size={18} />
+                {label}
+              </Link>
+            </React.Fragment>
           ))}
         </nav>
         <div className="sidebar-bottom">
@@ -264,6 +323,8 @@ export default function Admin({
           <button
             className="icon-button mobile-menu"
             aria-label="Abrir menu"
+            aria-expanded={mobile}
+            aria-controls="admin-navigation"
             onClick={() => setMobile(true)}
           >
             <Menu size={21} />
@@ -279,17 +340,30 @@ export default function Admin({
             </Badge>
             <button
               className="icon-button"
-              aria-label="Atualizar dados"
-              onClick={load}
+              aria-label={refreshing ? "Atualizando dados" : "Atualizar dados"}
+              disabled={refreshing}
+              aria-busy={refreshing}
+              onClick={() => {
+                if (confirmNavigation()) load();
+              }}
             >
-              <RefreshCw size={16} />
+              <RefreshCw size={16} className={refreshing ? "spin" : ""} />
             </button>
           </div>
         </header>
         <div className="admin-content">
+          {updatedAt && (
+            <p className="data-freshness" role="status">
+              Dados atualizados às{" "}
+              {updatedAt.toLocaleTimeString("pt-BR", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+              {refreshing ? " · Atualizando…" : ""}
+            </p>
+          )}
           <div className="page-title">
             <div>
-              <p className="eyebrow">BAHAMAS SOLIDÁRIO · GESTÃO</p>
               <h1>
                 {page === ""
                   ? `Olá, ${(admin?.name || "equipe").split(" ")[0]}.`
@@ -344,6 +418,49 @@ export default function Admin({
             <>
               {page === "" && (
                 <>
+                  <section
+                    className="quick-actions"
+                    aria-label="Ações frequentes"
+                  >
+                    <div>
+                      <strong>O que você precisa fazer?</strong>
+                      <p className="muted">
+                        Comece pelas ações mais usadas da operação.
+                      </p>
+                    </div>
+                    <div className="inline">
+                      <Button
+                        disabled={!configured}
+                        onClick={() =>
+                          setModal({ type: "campaign", value: emptyCampaign() })
+                        }
+                      >
+                        <Plus size={16} />
+                        Nova campanha
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        disabled={!configured}
+                        onClick={() =>
+                          setModal({
+                            type: "donation",
+                            value: {
+                              need_id: "",
+                              quantity: "",
+                              donor_name: "",
+                              donor_contact: "",
+                              notes: "",
+                              status: "received",
+                              donated_on: today(),
+                            },
+                          })
+                        }
+                      >
+                        <Heart size={16} />
+                        Registrar doação
+                      </Button>
+                    </div>
+                  </section>
                   <div className="admin-metrics">
                     <Metric
                       featured
@@ -419,7 +536,6 @@ export default function Admin({
                       )}
                     </section>
                     <section className="panel navy-panel">
-                      <span className="eyebrow">O PRÓXIMO PASSO</span>
                       <HandHeartIcon />
                       <h2>
                         Uma gestão atenta.
@@ -483,6 +599,11 @@ export default function Admin({
                       </select>
                     </Field>
                   </div>
+                  <FilterSummary
+                    count={filteredCampaigns.length}
+                    active={query || filter}
+                    clear={clearFilters}
+                  />
                   {filteredCampaigns.length ? (
                     <div className="admin-campaign-grid">
                       {filteredCampaigns.map((c) => (
@@ -586,6 +707,11 @@ export default function Admin({
                       </select>
                     </Field>
                   </div>
+                  <FilterSummary
+                    count={filteredDonations.length}
+                    active={query || filter || campaignFilter}
+                    clear={clearFilters}
+                  />
                   <div className="inline spread table-caption">
                     <span className="muted">
                       {number(filteredDonations.length)} registros encontrados
@@ -640,68 +766,57 @@ export default function Admin({
                       </select>
                     </Field>
                   </div>
+                  <FilterSummary
+                    count={filteredNeeds.length}
+                    active={query || filter}
+                    clear={clearFilters}
+                  />
                   <div className="needs-grid">
-                    {campaigns
-                      .filter((c) => c.status !== "archived")
-                      .flatMap((c) =>
-                        c.needs
-                          .filter((n) => n.active !== false)
-                          .map((n) => ({ ...n, campaign: c })),
-                      )
-                      .filter(
-                        (n) =>
-                          `${n.item} ${n.campaign.name}`
-                            .toLowerCase()
-                            .includes(query.toLowerCase()) &&
-                          (!filter ||
-                            (filter === "missing"
-                              ? n.received < n.goal
-                              : n.received >= n.goal)),
-                      )
-                      .map((n) => {
-                        const urgent =
-                          effectiveStatus(n.campaign) === "active" &&
-                          n.campaign.ends_on <=
-                            new Date(
-                              Date.now() + 14 * 86400000,
-                            ).toLocaleDateString("en-CA", {
-                              timeZone: "America/Sao_Paulo",
-                            }) &&
-                          n.received / n.goal < 0.3;
-                        return (
-                          <article className="panel need-card" key={n.id}>
-                            <div className="need-labels">
-                              <Badge tone="blue">{n.campaign.name}</Badge>
-                              {urgent && <Badge tone="red">Prioridade</Badge>}
-                            </div>
-                            <h2>{n.item}</h2>
-                            <strong className="need-count">
-                              {number(n.received)}
-                              <small>
-                                {" "}
-                                / {number(n.goal)} {n.unit}
-                              </small>
-                            </strong>
-                            <Progress
-                              value={Math.round(
-                                Math.min(100, (n.received / n.goal) * 100),
-                              )}
-                            />
-                            <p className="muted">
-                              {n.received >= n.goal
-                                ? "Meta alcançada"
-                                : `Faltam ${number(n.goal - n.received)} ${n.unit}`}
-                            </p>
-                            <small className="muted">
-                              Até {date(n.campaign.ends_on)}
+                    {filteredNeeds.map((n) => {
+                      const urgent =
+                        effectiveStatus(n.campaign) === "active" &&
+                        n.campaign.ends_on <=
+                          new Date(
+                            Date.now() + 14 * 86400000,
+                          ).toLocaleDateString("en-CA", {
+                            timeZone: "America/Sao_Paulo",
+                          }) &&
+                        n.received / n.goal < 0.3;
+                      return (
+                        <article className="panel need-card" key={n.id}>
+                          <div className="need-labels">
+                            <Badge tone="blue">{n.campaign.name}</Badge>
+                            {urgent && <Badge tone="red">Prioridade</Badge>}
+                          </div>
+                          <h2>{n.item}</h2>
+                          <strong className="need-count">
+                            {number(n.received)}
+                            <small>
+                              {" "}
+                              / {number(n.goal)} {n.unit}
                             </small>
-                          </article>
-                        );
-                      })}
+                          </strong>
+                          <Progress
+                            value={Math.round(
+                              Math.min(100, (n.received / n.goal) * 100),
+                            )}
+                          />
+                          <p className="muted">
+                            {n.received >= n.goal
+                              ? "Meta alcançada"
+                              : `Faltam ${number(n.goal - n.received)} ${n.unit}`}
+                          </p>
+                          <small className="muted">
+                            Até {date(n.campaign.ends_on)}
+                          </small>
+                        </article>
+                      );
+                    })}
                   </div>
-                  {!campaigns.length && (
-                    <Empty title="Sem necessidades cadastradas">
-                      Os itens aparecem aqui depois do cadastro de uma campanha.
+                  {!filteredNeeds.length && (
+                    <Empty title="Nenhuma necessidade encontrada">
+                      Cadastre itens em uma campanha ou ajuste os filtros da
+                      busca.
                     </Empty>
                   )}
                 </>
@@ -866,6 +981,9 @@ export default function Admin({
         <DonationForm
           initial={modal.value}
           campaigns={campaigns}
+          createCampaign={() =>
+            setModal({ type: "campaign", value: emptyCampaign() })
+          }
           busy={busy}
           close={() => {
             if (!busy) setModal(null);
@@ -876,14 +994,22 @@ export default function Admin({
         />
       )}
       {modal?.type === "archive" && (
-        <Modal title="Arquivar campanha?" onClose={() => setModal(null)}>
+        <Modal
+          title="Arquivar campanha?"
+          busy={busy}
+          onClose={() => setModal(null)}
+        >
           <p>
             A campanha <strong>{modal.value.name}</strong> deixará de aparecer
             no portal. Os registros e as doações serão preservados. Você poderá
             reativá-la pela edição.
           </p>
           <div className="form-actions">
-            <Button variant="secondary" onClick={() => setModal(null)}>
+            <Button
+              variant="secondary"
+              disabled={busy}
+              onClick={() => setModal(null)}
+            >
               Voltar
             </Button>
             <Button
@@ -927,6 +1053,7 @@ export default function Admin({
       {modal?.type === "remove" && (
         <Modal
           title="Revogar acesso administrativo?"
+          busy={busy}
           onClose={() => setModal(null)}
         >
           <p>
@@ -934,7 +1061,11 @@ export default function Admin({
             internos. Seus registros anteriores permanecerão no histórico.
           </p>
           <div className="form-actions">
-            <Button variant="secondary" onClick={() => setModal(null)}>
+            <Button
+              variant="secondary"
+              disabled={busy}
+              onClick={() => setModal(null)}
+            >
               Voltar
             </Button>
             <Button
@@ -1033,18 +1164,29 @@ function DonationTable({ records, findNeed, edit }) {
     </div>
   );
 }
-function CampaignForm({ initial, busy, close, submit }) {
-  const [value, setValue] = useState({
-    ...initial,
-    needs: initial.needs.filter((n) => n.active !== false),
-  });
+export function CampaignForm({ initial, busy, close, submit }) {
+  const baseline = useMemo(
+    () => ({
+      ...initial,
+      needs: initial.needs.filter((n) => n.active !== false),
+    }),
+    [initial],
+  );
+  const [value, setValue] = useState(baseline);
   const [error, setError] = useState("");
+  const dirty = JSON.stringify(value) !== JSON.stringify(baseline);
   const field = (name) => ({
     value: value[name] ?? "",
-    onChange: (e) => setValue((v) => ({ ...v, [name]: e.target.value })),
+    onChange: (event) =>
+      setValue((v) => ({ ...v, [name]: event.target.value })),
   });
-  const handle = async (e) => {
-    e.preventDefault();
+  const editNeed = (index, key, next) =>
+    setValue((v) => ({
+      ...v,
+      needs: v.needs.map((n, i) => (i === index ? { ...n, [key]: next } : n)),
+    }));
+  const handle = async (event) => {
+    event.preventDefault();
     setError("");
     if (value.ends_on < value.starts_on) {
       setError("O encerramento deve ser posterior ou igual ao início.");
@@ -1052,71 +1194,172 @@ function CampaignForm({ initial, busy, close, submit }) {
     }
     try {
       await submit(value);
-    } catch (e) {
-      setError(message(e));
+    } catch (error) {
+      setError(message(error));
     }
   };
+  const completed = [
+    value.name.trim().length >= 3,
+    value.ends_on >= value.starts_on,
+    value.needs.every(
+      (n) => n.item.trim().length >= 2 && Number(n.goal) > 0 && n.unit.trim(),
+    ),
+  ].filter(Boolean).length;
   return (
     <Modal
       title={value.id ? "Editar campanha" : "Nova campanha"}
       onClose={close}
+      busy={busy}
+      dirty={dirty}
       wide
     >
-      <form onSubmit={handle}>
+      <div className="form-completion">
+        <span>{completed} de 3 grupos preenchidos</span>
+        <Badge tone={dirty ? "red" : ""}>
+          {dirty ? "Alterações não salvas" : "Nenhuma alteração"}
+        </Badge>
+      </div>
+      <Form onSubmit={handle}>
         <fieldset disabled={busy}>
-          <div className="form-grid">
-            <Field label="Nome da campanha" className="full">
-              <input
-                required
-                minLength={3}
-                maxLength={120}
-                {...field("name")}
-              />
-            </Field>
-            <Field label="Categoria">
-              <select {...field("category")}>
-                {categories.map((c) => (
-                  <option key={c}>{c}</option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Situação">
-              <select {...field("status")}>
-                {Object.entries(statuses).map(([k, v]) => (
-                  <option key={k} value={k}>
-                    {v}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Início">
-              <input required type="date" {...field("starts_on")} />
-            </Field>
-            <Field label="Encerramento">
-              <input
-                required
-                type="date"
-                min={value.starts_on}
-                {...field("ends_on")}
-              />
-            </Field>
-            <Field label="Quem será beneficiado">
-              <input maxLength={200} {...field("beneficiary")} />
-            </Field>
-            <Field label="Local / ponto de coleta">
-              <input maxLength={300} {...field("location")} />
-            </Field>
-            <Field label="Descrição pública" className="full">
-              <textarea rows={4} maxLength={5000} {...field("description")} />
-            </Field>
-          </div>
-          <div className="section-head compact">
-            <div>
-              <h3>Itens necessários</h3>
-              <p className="muted">
-                Metas e unidades individuais para cada item.
-              </p>
+          <FormSection
+            title="1. Apresente a campanha"
+            description="Campos com * são obrigatórios. Você pode salvar como rascunho e revisar antes de publicar."
+          >
+            <div className="form-grid">
+              <Field label="Nome da campanha">
+                <input
+                  required
+                  minLength={3}
+                  maxLength={120}
+                  placeholder="Ex.: Mesa Cheia"
+                  {...field("name")}
+                />
+              </Field>
+              <Field label="Categoria">
+                <select {...field("category")}>
+                  {categories.map((c) => (
+                    <option key={c}>{c}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field
+                label="Descrição pública"
+                className="full"
+                hint="Explique a causa, quem será ajudado e o que pode ser doado."
+              >
+                <textarea rows={3} maxLength={5000} {...field("description")} />
+              </Field>
             </div>
+            <details className="optional-fields">
+              <summary>Beneficiários e ponto de coleta (opcional)</summary>
+              <div className="form-grid">
+                <Field label="Quem será beneficiado">
+                  <input maxLength={200} {...field("beneficiary")} />
+                </Field>
+                <Field label="Local / ponto de coleta">
+                  <input maxLength={300} {...field("location")} />
+                </Field>
+              </div>
+            </details>
+          </FormSection>
+          <FormSection
+            title="2. Defina o prazo"
+            description="As datas ajudam a comunidade a saber quando participar."
+          >
+            <div className="form-grid">
+              <Field label="Início">
+                <input required type="date" {...field("starts_on")} />
+              </Field>
+              <Field
+                label="Encerramento"
+                hint="A data deve ser igual ou posterior ao início."
+              >
+                <input
+                  required
+                  type="date"
+                  min={value.starts_on}
+                  {...field("ends_on")}
+                />
+              </Field>
+              <Field label="Situação" className="full">
+                <select {...field("status")}>
+                  {Object.entries(statuses).map(([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+          </FormSection>
+          <FormSection
+            title="3. Organize os itens e as metas"
+            description="Use uma meta e uma unidade para cada item. Quilos e unidades não são somados."
+          >
+            {value.needs.map((n, index) => (
+              <div className="need-form-row" key={n.id || index}>
+                <Field label={"Item " + (index + 1)}>
+                  <input
+                    required
+                    minLength={2}
+                    maxLength={100}
+                    placeholder="Ex.: Arroz"
+                    value={n.item}
+                    onChange={(event) =>
+                      editNeed(index, "item", event.target.value)
+                    }
+                  />
+                </Field>
+                <Field label="Meta">
+                  <input
+                    required
+                    type="number"
+                    min="0.01"
+                    max="100000000"
+                    step="0.01"
+                    inputMode="decimal"
+                    value={n.goal}
+                    onChange={(event) =>
+                      editNeed(index, "goal", event.target.value)
+                    }
+                  />
+                </Field>
+                <Field label="Unidade">
+                  <input
+                    required
+                    maxLength={30}
+                    placeholder="kg, unidades…"
+                    list="need-units"
+                    value={n.unit}
+                    onChange={(event) =>
+                      editNeed(index, "unit", event.target.value)
+                    }
+                  />
+                </Field>
+                <button
+                  type="button"
+                  className="icon-button danger-text"
+                  disabled={value.needs.length === 1}
+                  aria-label={"Retirar item " + (index + 1)}
+                  title="Retirar este item"
+                  onClick={() =>
+                    setValue((v) => ({
+                      ...v,
+                      needs: v.needs.filter((_, i) => index !== i),
+                    }))
+                  }
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            ))}
+            <datalist id="need-units">
+              <option value="unidades" />
+              <option value="kg" />
+              <option value="litros" />
+              <option value="pacotes" />
+              <option value="caixas" />
+            </datalist>
             <Button
               type="button"
               variant="secondary"
@@ -1128,121 +1371,66 @@ function CampaignForm({ initial, busy, close, submit }) {
                 }))
               }
             >
-              <Plus size={14} />
-              Adicionar
+              <Plus size={15} />
+              Adicionar outro item
             </Button>
-          </div>
-          {value.needs.map((n, i) => (
-            <div className="need-form-row" key={n.id || `new-${i}`}>
-              <Field label="Item">
-                <input
-                  required
-                  minLength={2}
-                  maxLength={100}
-                  value={n.item}
-                  onChange={(e) =>
-                    setValue((v) => ({
-                      ...v,
-                      needs: v.needs.map((x, j) =>
-                        i === j ? { ...x, item: e.target.value } : x,
-                      ),
-                    }))
-                  }
-                />
-              </Field>
-              <Field label="Meta">
-                <input
-                  required
-                  type="number"
-                  min="0.01"
-                  max="100000000"
-                  step="0.01"
-                  value={n.goal}
-                  onChange={(e) =>
-                    setValue((v) => ({
-                      ...v,
-                      needs: v.needs.map((x, j) =>
-                        i === j ? { ...x, goal: e.target.value } : x,
-                      ),
-                    }))
-                  }
-                />
-              </Field>
-              <Field label="Unidade">
-                <input
-                  required
-                  maxLength={30}
-                  value={n.unit}
-                  onChange={(e) =>
-                    setValue((v) => ({
-                      ...v,
-                      needs: v.needs.map((x, j) =>
-                        i === j ? { ...x, unit: e.target.value } : x,
-                      ),
-                    }))
-                  }
-                />
-              </Field>
-              <button
-                type="button"
-                className="icon-button danger-text"
-                disabled={value.needs.length === 1}
-                aria-label={`Retirar item ${i + 1}`}
-                onClick={() =>
-                  setValue((v) => ({
-                    ...v,
-                    needs: v.needs.filter((_, j) => j !== i),
-                  }))
+            <p className="form-help">
+              Retirar um item preserva seu histórico de doações. Itens que já
+              receberam doações mantêm o nome e a unidade.
+            </p>
+          </FormSection>
+          <section className="publish-section">
+            <h3>Visibilidade no portal</h3>
+            <label className="checkbox-field">
+              <input
+                type="checkbox"
+                checked={value.published && value.status !== "archived"}
+                disabled={value.status === "archived"}
+                onChange={(event) =>
+                  setValue((v) => ({ ...v, published: event.target.checked }))
                 }
-              >
-                <Trash2 size={16} />
-              </button>
-            </div>
-          ))}
-          <p className="form-help">
-            Itens retirados deixam de aparecer na campanha; o histórico de
-            doações é preservado. Itens com doações mantêm seu nome e unidade.
-          </p>
-          <label className="checkbox-field">
-            <input
-              type="checkbox"
-              checked={value.published}
-              onChange={(e) =>
-                setValue((v) => ({ ...v, published: e.target.checked }))
-              }
-              disabled={value.status === "archived"}
-            />
-            <span>
-              Publicar no portal público
-              <small>Deixe desmarcado para manter como rascunho.</small>
-            </span>
-          </label>
+              />
+              <span>
+                Publicar no portal público
+                <small>
+                  {value.status === "archived"
+                    ? "Campanhas arquivadas ficam fora do portal."
+                    : value.published
+                      ? "Ao salvar, as informações ficarão visíveis para a comunidade."
+                      : "Sem esta opção, a campanha será salva como rascunho."}
+                </small>
+              </span>
+            </label>
+          </section>
           {error && (
             <p role="alert" className="form-error">
               {error}
             </p>
           )}
-          <div className="form-actions">
-            <Button type="button" variant="secondary" onClick={close}>
+          <div className="form-actions sticky-actions">
+            <Button type="button" variant="secondary" data-close-modal>
               Cancelar
             </Button>
             <Button type="submit" loading={busy}>
-              Salvar campanha
+              {value.published && value.status !== "archived"
+                ? "Salvar e publicar"
+                : "Salvar rascunho"}
             </Button>
           </div>
         </fieldset>
-      </form>
+      </Form>
     </Modal>
   );
 }
-function DonationForm({ initial, campaigns, busy, close, submit }) {
-  const [value, setValue] = useState(initial);
-  const [error, setError] = useState("");
-  const field = (name) => ({
-    value: value[name] ?? "",
-    onChange: (e) => setValue((v) => ({ ...v, [name]: e.target.value })),
-  });
-  const options = campaigns.flatMap((c) =>
+export function DonationForm({
+  initial,
+  campaigns,
+  busy,
+  close,
+  submit,
+  createCampaign,
+}) {
+  const allNeeds = campaigns.flatMap((c) =>
     c.needs
       .filter(
         (n) =>
@@ -1251,98 +1439,198 @@ function DonationForm({ initial, campaigns, busy, close, submit }) {
       )
       .map((n) => ({ ...n, campaign: c })),
   );
+  const availableCampaigns = campaigns.filter((c) =>
+    allNeeds.some((n) => n.campaign.id === c.id),
+  );
+  const initialCampaign =
+    allNeeds.find((n) => n.id === initial.need_id)?.campaign.id ||
+    (availableCampaigns.length === 1 ? availableCampaigns[0].id : "");
+  const [campaignId, setCampaignId] = useState(initialCampaign);
+  const [value, setValue] = useState(initial);
+  const [error, setError] = useState("");
+  const options = allNeeds.filter((n) => n.campaign.id === campaignId);
+  const selectedNeed = allNeeds.find((n) => n.id === value.need_id);
+  const dirty = JSON.stringify(value) !== JSON.stringify(initial);
+  const field = (name) => ({
+    value: value[name] ?? "",
+    onChange: (event) =>
+      setValue((v) => ({ ...v, [name]: event.target.value })),
+  });
   return (
     <Modal
       title={value.id ? "Editar doação" : "Registrar doação"}
       onClose={close}
+      busy={busy}
+      dirty={dirty}
     >
-      <form
-        onSubmit={async (e) => {
-          e.preventDefault();
-          setError("");
-          try {
-            await submit(value);
-          } catch (e) {
-            setError(message(e));
+      {!availableCampaigns.length ? (
+        <Empty
+          title="Cadastre uma campanha primeiro"
+          action={
+            <Button onClick={createCampaign}>
+              <Plus size={16} />
+              Criar campanha
+            </Button>
           }
-        }}
-      >
-        <fieldset disabled={busy}>
-          <Field label="Campanha e item">
-            <select required {...field("need_id")}>
-              <option value="">Selecione o item</option>
-              {options.map((n) => (
-                <option key={n.id} value={n.id}>
-                  {n.campaign.name} · {n.item} ({n.unit})
-                </option>
-              ))}
-            </select>
-          </Field>
-          <div className="form-grid">
-            <Field label="Quantidade">
-              <input
-                required
-                type="number"
-                min="0.01"
-                max="100000000"
-                step="0.01"
-                {...field("quantity")}
-              />
-            </Field>
-            <Field label="Data">
-              <input
-                required
-                type="date"
-                max={today()}
-                {...field("donated_on")}
-              />
-            </Field>
-            <Field label="Nome do doador (opcional)">
-              <input maxLength={150} {...field("donor_name")} />
-            </Field>
-            <Field label="Contato (opcional)">
-              <input maxLength={200} {...field("donor_contact")} />
-            </Field>
-          </div>
-          <Field label="Situação">
-            <select {...field("status")}>
-              {Object.entries(donationStatuses).map(([k, v]) => (
-                <option key={k} value={k}>
-                  {v}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Observações internas">
-            <textarea rows={3} maxLength={2000} {...field("notes")} />
-          </Field>
-          <p className="form-help">
-            <ShieldCheck size={14} />
-            Nomes, contatos e observações não aparecem no portal público.
-            Doações pendentes e canceladas não entram nas metas.
-          </p>
-          {error && (
-            <p role="alert" className="form-error">
-              {error}
+        >
+          Para registrar uma doação, é preciso ter uma campanha ativa com pelo
+          menos um item.
+        </Empty>
+      ) : (
+        <Form
+          onSubmit={async (event) => {
+            event.preventDefault();
+            setError("");
+            try {
+              await submit(value);
+            } catch (error) {
+              setError(message(error));
+            }
+          }}
+        >
+          <fieldset disabled={busy}>
+            <FormSection
+              title="Destino da doação"
+              description="Escolha a campanha e, depois, o item doado."
+            >
+              <Field label="Campanha">
+                <select
+                  required
+                  value={campaignId}
+                  onChange={(event) => {
+                    const id = event.target.value;
+                    setCampaignId(id);
+                    const needs = allNeeds.filter((n) => n.campaign.id === id);
+                    setValue((v) => ({
+                      ...v,
+                      need_id: needs.length === 1 ? needs[0].id : "",
+                    }));
+                  }}
+                >
+                  <option value="">Selecione a campanha</option>
+                  {availableCampaigns.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Item necessário">
+                <select required disabled={!campaignId} {...field("need_id")}>
+                  <option value="">
+                    {campaignId
+                      ? "Selecione o item"
+                      : "Escolha uma campanha primeiro"}
+                  </option>
+                  {options.map((n) => (
+                    <option key={n.id} value={n.id}>
+                      {n.item} ({n.unit})
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <div className="form-grid">
+                <Field
+                  label="Quantidade"
+                  hint={
+                    selectedNeed
+                      ? "Unidade: " + selectedNeed.unit
+                      : "A unidade é definida pelo item escolhido."
+                  }
+                >
+                  <input
+                    required
+                    type="number"
+                    min="0.01"
+                    max="100000000"
+                    step="0.01"
+                    inputMode="decimal"
+                    {...field("quantity")}
+                  />
+                </Field>
+                <Field label="Data">
+                  <input
+                    required
+                    type="date"
+                    max={today()}
+                    {...field("donated_on")}
+                  />
+                </Field>
+              </div>
+              <Field
+                label="Situação"
+                hint={
+                  value.status === "received"
+                    ? "Doações recebidas entram nas metas e nos resultados públicos."
+                    : "Doações pendentes ou canceladas não entram nas metas."
+                }
+              >
+                <select {...field("status")}>
+                  {Object.entries(donationStatuses).map(([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </FormSection>
+            <details
+              className="optional-fields"
+              open={Boolean(
+                initial.donor_name || initial.donor_contact || initial.notes,
+              )}
+            >
+              <summary>
+                Identificação do doador e observações (opcional)
+              </summary>
+              <Field label="Nome do doador">
+                <input
+                  autoComplete="off"
+                  maxLength={150}
+                  {...field("donor_name")}
+                />
+              </Field>
+              <Field label="Contato">
+                <input
+                  autoComplete="off"
+                  maxLength={200}
+                  {...field("donor_contact")}
+                />
+              </Field>
+              <Field label="Observações internas">
+                <textarea rows={3} maxLength={2000} {...field("notes")} />
+              </Field>
+            </details>
+            <p className="form-help">
+              <ShieldCheck size={15} />
+              Nome, contato e observações ficam restritos à equipe
+              administrativa.
             </p>
-          )}
-          <div className="form-actions">
-            <Button type="button" variant="secondary" onClick={close}>
-              Cancelar
-            </Button>
-            <Button loading={busy} type="submit">
-              Salvar doação
-            </Button>
-          </div>
-        </fieldset>
-      </form>
+            {error && (
+              <p role="alert" className="form-error">
+                {error}
+              </p>
+            )}
+            <div className="form-actions sticky-actions">
+              <Button type="button" variant="secondary" data-close-modal>
+                Cancelar
+              </Button>
+              <Button type="submit" loading={busy}>
+                Salvar doação
+              </Button>
+            </div>
+          </fieldset>
+        </Form>
+      )}
     </Modal>
   );
 }
-function ContentForm({ settings, busy, disabled, onSave, onImport }) {
+export function ContentForm({ settings, busy, disabled, onSave, onImport }) {
   const [value, setValue] = useState(settings);
   const [error, setError] = useState("");
   useEffect(() => setValue(settings), [settings]);
+  const dirty = JSON.stringify(value) !== JSON.stringify(settings);
+  useUnsavedChanges(dirty);
   const fields = [
     ["hero_title", "Título da página inicial", 160],
     ["hero_description", "Apresentação da página inicial", 600],
@@ -1358,10 +1646,15 @@ function ContentForm({ settings, busy, disabled, onSave, onImport }) {
     <>
       <section className="panel">
         <SectionHead
+          action={
+            <Badge tone={dirty ? "red" : "blue"}>
+              {dirty ? "Alterações não salvas" : "Conteúdo salvo"}
+            </Badge>
+          }
           title="O que a comunidade vê"
           text="Estas informações são públicas. Não inclua informações internas ou dados de doadores."
         />
-        <form
+        <Form
           onSubmit={async (e) => {
             e.preventDefault();
             setError("");
@@ -1416,12 +1709,12 @@ function ContentForm({ settings, busy, disabled, onSave, onImport }) {
               </p>
             )}
             <div className="form-actions">
-              <Button loading={busy} type="submit">
+              <Button loading={busy} disabled={!dirty} type="submit">
                 Salvar conteúdo público
               </Button>
             </div>
           </fieldset>
-        </form>
+        </Form>
       </section>
       <section className="panel import-panel">
         <div>
@@ -1547,12 +1840,12 @@ function Reports({ data, findNeed, exportDonations }) {
 function InviteForm({ busy, close, submit }) {
   const [error, setError] = useState("");
   return (
-    <Modal title="Convidar administrador" onClose={close}>
+    <Modal title="Convidar administrador" onClose={close} busy={busy}>
       <p className="muted">
         A pessoa receberá um convite por e-mail e terá permissão para gerenciar
         campanhas, doações, conteúdo e equipe.
       </p>
-      <form
+      <Form
         onSubmit={async (e) => {
           e.preventDefault();
           const f = new FormData(e.currentTarget);
@@ -1576,7 +1869,12 @@ function InviteForm({ busy, close, submit }) {
             </p>
           )}
           <div className="form-actions">
-            <Button variant="secondary" type="button" onClick={close}>
+            <Button
+              variant="secondary"
+              type="button"
+              data-close-modal
+              onClick={close}
+            >
               Cancelar
             </Button>
             <Button type="submit" loading={busy}>
@@ -1584,7 +1882,7 @@ function InviteForm({ busy, close, submit }) {
             </Button>
           </div>
         </fieldset>
-      </form>
+      </Form>
     </Modal>
   );
 }
@@ -1604,7 +1902,7 @@ function ImportForm({ busy, close, submit }) {
     }
   };
   return (
-    <Modal title="Importar dados anteriores" onClose={close}>
+    <Modal title="Importar dados anteriores" onClose={close} busy={busy}>
       <p className="muted">
         A importação é feita de uma vez só. Revise as quantidades antes de
         confirmar. O mesmo arquivo não pode ser importado duas vezes.
@@ -1652,7 +1950,7 @@ function ImportForm({ busy, close, submit }) {
         </p>
       )}
       <div className="form-actions">
-        <Button variant="secondary" onClick={close}>
+        <Button variant="secondary" data-close-modal onClick={close}>
           Cancelar
         </Button>
         <Button
@@ -1670,5 +1968,21 @@ function ImportForm({ busy, close, submit }) {
         </Button>
       </div>
     </Modal>
+  );
+}
+
+function FilterSummary({ count, active, clear }) {
+  return (
+    <div className="filter-summary">
+      <p className="result-count" role="status">
+        {number(count)}{" "}
+        {count === 1 ? "resultado encontrado" : "resultados encontrados"}
+      </p>
+      {active && (
+        <Button variant="secondary" onClick={clear}>
+          Limpar filtros
+        </Button>
+      )}
+    </div>
   );
 }

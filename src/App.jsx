@@ -1,4 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   ArrowRight,
   CheckCircle2,
@@ -12,24 +19,73 @@ import {
 } from "lucide-react";
 import Public from "./pages/Public";
 import Admin from "./pages/Admin";
-import { Button, ErrorBox, Field, Loading } from "./components/ui";
+import { Button, ErrorBox, Field, Form, Loading } from "./components/ui";
 import { configured, getPublicData, message, supabase } from "./lib/data";
+import { confirmNavigation } from "./lib/ux";
+
+const NavigationContext = createContext(null);
+function AppLink({ to, children, ...props }) {
+  const navigate = useContext(NavigationContext);
+  return (
+    <a
+      {...props}
+      href={to}
+      onClick={(event) => {
+        props.onClick?.(event);
+        if (
+          !event.defaultPrevented &&
+          !event.metaKey &&
+          !event.ctrlKey &&
+          !event.shiftKey &&
+          !event.altKey &&
+          event.button === 0
+        ) {
+          event.preventDefault();
+          navigate(to);
+        }
+      }}
+    >
+      {children}
+    </a>
+  );
+}
 
 function usePath() {
   const [path, setPath] = useState(
     window.location.pathname.replace(/\/$/, "") || "/",
   );
+  const position = useRef(window.history.state?.bsPosition || 0);
+  const restoring = useRef(false);
   useEffect(() => {
-    const pop = () =>
+    window.history.replaceState(
+      { ...window.history.state, bsPosition: position.current },
+      "",
+    );
+    const pop = (event) => {
+      if (restoring.current) {
+        restoring.current = false;
+        return;
+      }
+      const nextPosition = event.state?.bsPosition ?? position.current - 1;
+      if (!confirmNavigation()) {
+        restoring.current = true;
+        window.history.go(position.current - nextPosition || 1);
+        return;
+      }
+      position.current = nextPosition;
       setPath(window.location.pathname.replace(/\/$/, "") || "/");
+    };
     window.addEventListener("popstate", pop);
     return () => window.removeEventListener("popstate", pop);
   }, []);
-  const navigate = (to) => {
-    window.history.pushState({}, "", to);
+  const navigate = useCallback((to, options = {}) => {
+    if (to === window.location.pathname) return;
+    if (!options.confirmed && !confirmNavigation()) return;
+    position.current += 1;
+    window.history.pushState({ bsPosition: position.current }, "", to);
     setPath(to);
     window.scrollTo({ top: 0, behavior: "instant" });
-  };
+  }, []);
   return [path, navigate];
 }
 export default function App() {
@@ -45,28 +101,7 @@ export default function App() {
   const [dark, setDark] = useState(
     () => localStorage.getItem("bs-dark-mode") === "true",
   );
-  const Link = ({ to, children, ...props }) => (
-    <a
-      {...props}
-      href={to}
-      onClick={(e) => {
-        props.onClick?.(e);
-        if (
-          !e.defaultPrevented &&
-          !e.metaKey &&
-          !e.ctrlKey &&
-          !e.shiftKey &&
-          !e.altKey &&
-          (!e.button || e.button === 0)
-        ) {
-          e.preventDefault();
-          navigate(to);
-        }
-      }}
-    >
-      {children}
-    </a>
-  );
+  const Link = AppLink;
   const notify = (text, tone = "success") => setToast({ text, tone });
   const load = async () => {
     setError("");
@@ -82,11 +117,28 @@ export default function App() {
     document.title = `${path.startsWith("/admin") ? "Administração" : path === "/campanhas" ? "Campanhas" : path === "/transparencia" ? "Transparência" : "Comunidade"} | Bahamas Solidário`;
   }, [path]);
   useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const heading = document.querySelector("main h1, #admin-main h1");
+      if (heading) {
+        heading.setAttribute("tabindex", "-1");
+        heading.focus({ preventScroll: true });
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [path, Boolean(data), authLoading]);
+  useEffect(() => {
+    const escape = (event) => {
+      if (event.key === "Escape") setMobile(false);
+    };
+    window.addEventListener("keydown", escape);
+    return () => window.removeEventListener("keydown", escape);
+  }, []);
+  useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
     localStorage.setItem("bs-dark-mode", String(dark));
   }, [dark]);
   useEffect(() => {
-    if (!toast) return;
+    if (!toast || toast.tone === "error") return;
     const timer = setTimeout(() => setToast(null), 6000);
     return () => clearTimeout(timer);
   }, [toast]);
@@ -139,6 +191,7 @@ export default function App() {
     };
   }, [user?.id]);
   const signOut = async () => {
+    if (!confirmNavigation()) return;
     const { error } = await supabase.auth.signOut();
     if (error) {
       notify(message(error), "error");
@@ -146,7 +199,7 @@ export default function App() {
     }
     setUser(null);
     setAdmin(null);
-    navigate("/admin");
+    navigate("/admin", { confirmed: true });
   };
   const isAdmin = path.startsWith("/admin");
   let body;
@@ -214,6 +267,7 @@ export default function App() {
             <nav
               className={mobile ? "public-nav open" : "public-nav"}
               aria-label="Menu principal"
+              id="public-navigation"
             >
               {[
                 ["/", "Início"],
@@ -245,6 +299,8 @@ export default function App() {
               <button
                 className="icon-button mobile-menu"
                 aria-label={mobile ? "Fechar menu" : "Abrir menu"}
+                aria-expanded={mobile}
+                aria-controls="public-navigation"
                 onClick={() => setMobile(!mobile)}
               >
                 {mobile ? <X size={22} /> : <Menu size={22} />}
@@ -300,11 +356,14 @@ export default function App() {
       </>
     );
   return (
-    <>
+    <NavigationContext.Provider value={navigate}>
       {body}
       <div className="toast-region" aria-live="polite" aria-atomic="true">
         {toast && (
-          <div className={`toast ${toast.tone}`}>
+          <div
+            className={`toast ${toast.tone}`}
+            role={toast.tone === "error" ? "alert" : "status"}
+          >
             <CheckCircle2 size={18} />
             <span>{toast.text}</span>
             <button aria-label="Fechar aviso" onClick={() => setToast(null)}>
@@ -313,7 +372,7 @@ export default function App() {
           </div>
         )}
       </div>
-    </>
+    </NavigationContext.Provider>
   );
 }
 function Auth({ Link, mode = "login", user, notify, navigate }) {
@@ -321,6 +380,7 @@ function Auth({ Link, mode = "login", user, notify, navigate }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const passwordMode = mode === "password";
+  const [showPassword, setShowPassword] = useState(false);
   async function submit(e) {
     e.preventDefault();
     setError("");
@@ -338,7 +398,7 @@ function Auth({ Link, mode = "login", user, notify, navigate }) {
         navigate("/admin");
       } else if (reset) {
         const { error } = await supabase.auth.resetPasswordForEmail(
-          f.get("email"),
+          String(f.get("email")).trim(),
           { redirectTo: `${window.location.origin}/admin/nova-senha` },
         );
         if (error) throw error;
@@ -347,7 +407,7 @@ function Auth({ Link, mode = "login", user, notify, navigate }) {
         );
       } else {
         const { error } = await supabase.auth.signInWithPassword({
-          email: f.get("email"),
+          email: String(f.get("email")).trim(),
           password: f.get("password"),
         });
         if (error) throw error;
@@ -369,7 +429,6 @@ function Auth({ Link, mode = "login", user, notify, navigate }) {
             <img src="/logo2.png" alt="Grupo Bahamas" />
             <span>Solidário.</span>
           </div>
-          <p className="eyebrow">GESTÃO COM PROPÓSITO</p>
           <h1>
             Organizar o cuidado.
             <br />
@@ -424,7 +483,7 @@ function Auth({ Link, mode = "login", user, notify, navigate }) {
               <Link to="/admin">Voltar ao acesso</Link>
             </div>
           ) : (
-            <form onSubmit={submit}>
+            <Form onSubmit={submit}>
               <fieldset disabled={busy}>
                 {!passwordMode && (
                   <Field label="E-mail">
@@ -442,7 +501,7 @@ function Auth({ Link, mode = "login", user, notify, navigate }) {
                   <Field label={passwordMode ? "Nova senha" : "Senha"}>
                     <input
                       name="password"
-                      type="password"
+                      type={showPassword ? "text" : "password"}
                       autoComplete={
                         passwordMode ? "new-password" : "current-password"
                       }
@@ -452,11 +511,23 @@ function Auth({ Link, mode = "login", user, notify, navigate }) {
                     />
                   </Field>
                 )}
+                {(!reset || passwordMode) && (
+                  <label className="password-toggle">
+                    <input
+                      type="checkbox"
+                      checked={showPassword}
+                      onChange={(event) =>
+                        setShowPassword(event.target.checked)
+                      }
+                    />
+                    Mostrar senha
+                  </label>
+                )}
                 {passwordMode && (
                   <Field label="Confirme a senha">
                     <input
                       name="confirmation"
-                      type="password"
+                      type={showPassword ? "text" : "password"}
                       autoComplete="new-password"
                       minLength={12}
                       required
@@ -490,7 +561,7 @@ function Auth({ Link, mode = "login", user, notify, navigate }) {
                   </button>
                 )}
               </fieldset>
-            </form>
+            </Form>
           )}
           <p className="auth-footnote">
             Se você faz parte da equipe e ainda não tem acesso, solicite um
