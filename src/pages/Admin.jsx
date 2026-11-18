@@ -67,6 +67,7 @@ import {
 } from "../lib/data";
 import { confirmNavigation, normalizeSearch } from "../lib/ux";
 import { useUnsavedChanges } from "../lib/use-unsaved";
+import { invokeTeamInvitation } from "../lib/team";
 
 const Management = React.lazy(() => import("./Management"));
 
@@ -1063,19 +1064,21 @@ export default function Admin({
         <InviteForm
           busy={busy}
           close={() => setModal(null)}
-          submit={(values) =>
-            mutate(async () => {
-              const { data, error } = await supabase.functions.invoke(
-                "manage-team",
-                { body: { action: "invite", ...values } },
+          submit={async (values) => {
+            setBusy(true);
+            try {
+              const result = await invokeTeamInvitation(supabase, values);
+              await load();
+              notify(
+                result.alreadyAdmin
+                  ? "Essa pessoa já possui acesso administrativo."
+                  : "Acesso administrativo autorizado.",
               );
-              if (error || data?.error)
-                throw new Error(
-                  data?.error ||
-                    "Não foi possível convidar. Confira se a função manage-team está publicada.",
-                );
-            }, "Convite enviado. A pessoa receberá um e-mail para definir sua senha.")
-          }
+              return result;
+            } finally {
+              setBusy(false);
+            }
+          }}
         />
       )}
       {modal?.type === "remove" && (
@@ -1865,52 +1868,151 @@ function Reports({ data, findNeed, exportDonations }) {
     </>
   );
 }
-function InviteForm({ busy, close, submit }) {
-  const [error, setError] = useState("");
+export function InviteForm({ busy, close, submit }) {
+  const [error, setError] = useState(""),
+    [result, setResult] = useState(null),
+    [delivery, setDelivery] = useState("link"),
+    [copied, setCopied] = useState(false);
   return (
-    <Modal title="Convidar administrador" onClose={close} busy={busy}>
-      <p className="muted">
-        A pessoa receberá um convite por e-mail e terá permissão para gerenciar
-        campanhas, doações, conteúdo e equipe.
-      </p>
-      <Form
-        onSubmit={async (e) => {
-          e.preventDefault();
-          const f = new FormData(e.currentTarget);
-          try {
-            await submit({ name: f.get("name"), email: f.get("email") });
-          } catch (e) {
-            setError(message(e));
-          }
-        }}
-      >
-        <fieldset disabled={busy}>
-          <Field label="Nome">
-            <input name="name" required minLength={2} maxLength={100} />
-          </Field>
-          <Field label="E-mail">
-            <input name="email" type="email" required maxLength={254} />
-          </Field>
+    <Modal
+      title={result ? "Acesso administrativo" : "Convidar administrador"}
+      onClose={close}
+      busy={busy}
+      dirty={result ? false : undefined}
+    >
+      {result ? (
+        <>
+          <h3>
+            {result.alreadyAdmin
+              ? "Essa pessoa já é administradora."
+              : "Conta autorizada para administrar o sistema."}
+          </h3>
+          <p className="muted">
+            {result.name} · {result.email}
+          </p>
+          {result.delivery === "link" ? (
+            <>
+              {result.emailFailed && (
+                <p className="form-error" role="status">
+                  O serviço não conseguiu entregar o e-mail. Use o link abaixo
+                  para concluir o convite.
+                </p>
+              )}
+              <p>
+                Copie o link e envie em particular para essa pessoa confirmar o
+                acesso e definir a própria senha.
+              </p>
+              <Field label="Link pessoal de convite">
+                <textarea
+                  rows={4}
+                  readOnly
+                  value={result.invitationUrl}
+                  spellCheck={false}
+                  onFocus={(e) => e.target.select()}
+                />
+              </Field>
+              <p className="form-help">
+                O link permite acesso à conta. Não publique nem compartilhe com
+                outras pessoas. Ele é temporário e só pode ser utilizado uma
+                vez.
+              </p>
+              <Button
+                variant="secondary"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(result.invitationUrl);
+                    setCopied(true);
+                  } catch {
+                    setError("Selecione o link acima e copie pelo navegador.");
+                  }
+                }}
+              >
+                {copied ? "Link copiado" : "Copiar link de convite"}
+              </Button>
+            </>
+          ) : (
+            <p>
+              {result.delivery === "email"
+                ? "O convite foi enviado por e-mail. A pessoa deve abri-lo e definir a própria senha."
+                : "A pessoa pode entrar no painel com o e-mail e a senha que já utiliza. Nenhuma senha foi alterada."}
+            </p>
+          )}
           {error && (
-            <p className="form-error" role="alert">
+            <p role="alert" className="form-error">
               {error}
             </p>
           )}
           <div className="form-actions">
-            <Button
-              variant="secondary"
-              type="button"
-              data-close-modal
-              onClick={close}
-            >
-              Cancelar
-            </Button>
-            <Button type="submit" loading={busy}>
-              Enviar convite
-            </Button>
+            <Button onClick={close}>Concluir</Button>
           </div>
-        </fieldset>
-      </Form>
+        </>
+      ) : (
+        <>
+          <p className="muted">
+            A pessoa terá permissão para gerenciar campanhas, doações,
+            planejamento, conteúdo e equipe. Use o e-mail de quem deve receber
+            esse acesso.
+          </p>
+          <Form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setError("");
+              const values = new FormData(e.currentTarget);
+              try {
+                setResult(
+                  await submit({
+                    name: String(values.get("name")).trim(),
+                    email: String(values.get("email")).trim().toLowerCase(),
+                    delivery,
+                  }),
+                );
+              } catch (e) {
+                setError(message(e));
+              }
+            }}
+          >
+            <fieldset disabled={busy}>
+              <Field label="Nome">
+                <input name="name" required minLength={2} maxLength={100} />
+              </Field>
+              <Field label="E-mail">
+                <input name="email" type="email" required maxLength={254} />
+              </Field>
+              <Field
+                label="Como entregar o convite"
+                hint={
+                  delivery === "link"
+                    ? "Não envia e-mail automaticamente. Você copia o link e entrega à pessoa."
+                    : "Se o envio de e-mail falhar, o painel mostrará um link de convite."
+                }
+              >
+                <select
+                  value={delivery}
+                  onChange={(e) => setDelivery(e.target.value)}
+                >
+                  <option value="link">Gerar link para enviar à pessoa</option>
+                  <option value="email">Tentar enviar por e-mail</option>
+                </select>
+              </Field>
+              {error && (
+                <p role="alert" className="form-error">
+                  {error}
+                </p>
+              )}
+              <div className="form-actions">
+                <Button type="button" variant="secondary" data-close-modal>
+                  Cancelar
+                </Button>
+                <Button type="submit" loading={busy}>
+                  {delivery === "link"
+                    ? "Adicionar e gerar link"
+                    : "Enviar convite"}
+                </Button>
+              </div>
+            </fieldset>
+          </Form>
+        </>
+      )}
     </Modal>
   );
 }

@@ -47,8 +47,9 @@ A configuração `verify_jwt = false` é intencional: a função valida o token 
 `auth.getUser` e consulta a lista de administradores antes de usar privilégios.
 O CORS permite somente `SITE_URL`. Não use barra no final dessa URL.
 
-A tela Equipe permite convidar administradores e revogar acessos. Para uma conta
-que já existe no Supabase Auth, autorize pelo mesmo SQL do primeiro acesso.
+A tela Equipe permite adicionar administradores por link pessoal ou tentar envio por e-mail. O link é exibido somente ao administrador autenticado e deve ser entregue em particular ao destinatário, que confirma o acesso e define sua própria senha. Ele não é armazenado no navegador nem no banco da aplicação.
+
+Se o e-mail já tem uma conta confirmada, a função autoriza essa conta e preserva a senha existente. Administradores já cadastrados não são duplicados. Se o envio por e-mail falhar por restrição de entrega, a função pode devolver um link para entrega manual. E-mails recusados pelo Auth são apresentados como erro de endereço, sem simular sucesso.
 A aplicação impede a remoção do próprio acesso. Não exclui o usuário do Auth
 nem apaga seus registros ao revogar a autorização.
 
@@ -115,3 +116,9 @@ Fontes oficiais: [RLS](https://supabase.com/docs/guides/database/postgres/row-le
 [funções seguras](https://supabase.com/docs/guides/database/functions),
 [Edge Functions](https://supabase.com/docs/guides/functions/auth),
 [configuração da Vercel](https://vercel.com/docs/project-configuration/vercel-json).
+
+## Correção dos convites — 18/11/2026
+
+A função `manage-team` usa `index.ts` e `handler.js`; ambos devem ser enviados ao publicar. `verify_jwt = false` continua acompanhado de validação explícita com `auth.getUser` e autorização em `administrators` antes de qualquer operação privilegiada. A resposta usa `Cache-Control: no-store`, e links de convite não são registrados em logs.
+
+O painel interpreta o JSON de erro retornado pela função, em vez de atribuir toda falha à ausência da publicação. Os testes cobrem autorização, conta existente, duplicidade, falha de entrega, e-mail recusado, erro de gravação e ausência de exposição de links em respostas de falha. Nenhuma conta administrativa real foi criada durante esses testes.
